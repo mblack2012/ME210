@@ -12,7 +12,9 @@
  ************************************************************/
 
 /*---------------Module Function Prototypes---*/
-
+unsigned char TestForKey(void);
+void RespToKey(void);
+void spinRobot(bool directoin, int speed);
 
 // FSM STATE DEFINITIONS
 typedef enum{
@@ -34,8 +36,8 @@ void setup() {
   Serial.println("ME210 Lab3 Part 4, Kushan, Breed");
 
   //Begin from the clockwise spinning state state
-  current_state = SPIN_CW;
-  next_state = SPIN_CW;
+  current_state = HALT;
+  next_state = HALT;
 }
 
 void loop() 
@@ -44,53 +46,24 @@ void loop()
   {
    /*
    ** HALT STATE
-   */ 
-   case SPIN_CW:
+   */
+   case HALT:
    {
-      //Serial.println("SPIN CW");
-      //upon a keypress, go to the counterclockwise spinning state
-      if (TestForKey()){
-        next_state = SPIN_CCW;
-        RespToKey();
-      }
-      else next_state = SPIN_CW;
-      
-      val = 1023;            // reads the value of the potentiometer (value between 0 and 1023) 
-      //Serial.println(val);
-      val = map(val, 0, 1023, 0, 255);     // scale it to use it with the PWM library
-      analogWrite(pwmpin1,val);
-      analogWrite(pwmpin2,val);
-      analogWrite(pwmpin3,val);
-      analogWrite(pwmpin4,val);
-      digitalWrite(direction_pin,LOW);
-      digitalWrite(direction_pin2,HIGH);
-      digitalWrite(direction_pin3,LOW);
-      digitalWrite(direction_pin4,LOW);
+
+      break;
+   } 
+   case ORIENTING:
+   {
+      spinRobot(true,3);
       break;
    }
-    case SPIN_CCW:
+   /*
+    case DRIVING:
     {
-      //Serial.println("SPIN CCW");
-      //upon a keypress, go to the clockwise spinning state
-      if (TestForKey()){
-        next_state = SPIN_CW;
-        RespToKey();
-      }
-      else next_state = SPIN_CCW;
-      
-      val = 1023;            // reads the value of the potentiometer (value between 0 and 1023) 
-      //Serial.println(val);
-      val = map(val, 0, 1023, 0, 255);     // scale it to use it with the PWM library
-      analogWrite(pwmpin1,val);
-      analogWrite(pwmpin2,val);
-      analogWrite(pwmpin3,val);
-      analogWrite(pwmpin4,val);
-      digitalWrite(direction_pin,HIGH);
-      digitalWrite(direction_pin2,HIGH);
-      digitalWrite(direction_pin3,HIGH);
-      digitalWrite(direction_pin4,LOW);
+
       break;
     }
+    */
   }
   current_state = next_state;
   return;
@@ -115,3 +88,6 @@ void RespToKey(void) {
   Serial.println(theKey,HEX);
 }
 
+void spinRobot(bool direction, int speed){
+  //does nothing as of now
+}
