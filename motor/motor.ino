@@ -35,8 +35,6 @@
 #define MIN_SPEED_D 80.0
 #define MAX_SPEED 255
 
-int drivespeed;
-
 /*---------------Module Function Prototypes---*/
 unsigned char TestForKey(void);
 void RespToKey(void);
