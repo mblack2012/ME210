@@ -38,13 +38,11 @@ void loop() {
 //  Serial.print("  ");
 //  Serial.print(distance2);
 //  Serial.print("  ");
-//  Serial.print(distance3);
-//  Serial.print(" ");
-//  Serial.print(distance4);
-//  Serial.print(" ");
-  Serial.print(getAngle(distance3, distance4));
-  Serial.print("\n");
-//  Serial.println("°");
+  Serial.print((int)distance3);
+  Serial.print(" ");
+  Serial.print((int)distance4);
+  Serial.print(" ");
+  Serial.println(getAngle(distance3, distance4));
 
   //Delay before next reading.
   delay(500);

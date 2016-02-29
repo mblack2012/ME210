@@ -15,7 +15,7 @@
 #define MOTOR4_PWM_PIN 5
 #define MOTOR4_DIR_PIN 25
 
-#define MAX_INPUT 4
+#define MAX_INPUT 15
 
 void setup() {
   ULTRASONIC_SERIAL.begin(BAUD_RATE);
@@ -32,9 +32,9 @@ void setup() {
   pinMode(MOTOR4_DIR_PIN, OUTPUT);
 }
 
-void process_data (const char * data){
-  Serial.println((String)data);
-}
+//void process_data (const char * data){
+//  Serial.println((String)data);
+//}
 
 char* processIncomingByte (const byte inByte) {
   static char input_line [MAX_INPUT];
@@ -61,10 +61,9 @@ char* processIncomingByte (const byte inByte) {
   return "";
 }
 
-int readUltrasonicSerial() {
-  static int angle = 0;
-  
-  if (!ULTRASONIC_SERIAL.available()) return angle;
+String readUltrasonicSerial() {
+  String str = "";
+  if (!ULTRASONIC_SERIAL.available()) return str;
   
   const char* ultrasonicResult;
   // once all bytes have been read, result will contain the resulting string
@@ -73,15 +72,18 @@ int readUltrasonicSerial() {
   }
   ULTRASONIC_SERIAL.flush();
   if (sizeof(ultrasonicResult) != 0) {
-    angle = atoi(ultrasonicResult);
+//    angle = atoi(ultrasonicResult);
+      str = ultrasonicResult;
   }
   
-  return angle; 
+//  return result; 
+  return str;
 }
 
-void 
-
 void loop() {
-  int angle = readUltrasonicSerial();
+//  int angle = readUltrasonicSerial();
+    String str = readUltrasonicSerial();
+    if (str.length() != 0) Serial.println(str);
+    delay(100);
   
 }
