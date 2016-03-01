@@ -53,6 +53,7 @@
 #define ARENA_HALFWIDTH 122 // cm
 #define ROBOT_LENGTH 28 // cm
 
+#define IR_BLOCK_MARGIN 8 // cm
 
 
 /*---------------Module Function Prototypes---*/
@@ -74,9 +75,14 @@ typedef enum{
 states current_state;
 states next_state;
 
-// current coordinates, defined relative to back left corner of bot. x=0 is middle of arena, y=0 is back
+// current coordinates, defined relative to middle back side of bot. x=0 is middle of arena, y=0 is back
 int x; // cm
 int y; // cm
+
+double motorABias;
+double motorBBias;
+double motorCBias;
+double motorDBias;
 
 void setup() {
   Serial.begin(9600);
@@ -100,8 +106,13 @@ void setup() {
 
   //TODO: START TIMER
 
-  x = 100; // initial guess
+  x = 90; // initial guess
   y = 20; // initial guess
+
+  motorABias = 1.0;
+  motorBBias = 1.0;
+  motorCBias = 1.0;
+  motorDBias = 1.0;
 }
 
 void loop() 
@@ -186,7 +197,7 @@ void stopDumping() {
 }
 
 void driveToBucket() {
-  
+  bool* vals = readIR();
 }
 
 void driveToFirstBucket() {
@@ -234,14 +245,25 @@ bool checkOriented() {
 }
 
 void setBiases(int* values) {
-  
+  int angle = 0;
+  if (abs(x) > ROBOT_LENGTH+IR_BLOCK_MARGIN) {
+    angle = values[USONIC_BACKANGLE_IDX];
+  } else {
+    angle = values[USONIC_RIGHTANGLE_IDX];
+  }
+
+  // NEEDS CALIBRATION
+  motorABias = 1+angle/20.0;
+  motorBBias = 1+angle/20.0;
+  motorCBias = 1+angle/20.0;
+  motorDBias = 1+angle/20.0;
 }
 
 void setXY(int* values) {
   int rightdistance = values[USONIC_RIGHT1_IDX];
   if (values[USONIC_RIGHT1_IDX] != -1) {
     if (values[USONIC_RIGHT2_IDX] != -1) {
-      rightdistance = (values[USONIC_RIGHT1_IDX] + values[USONIC_RIGHT2_IDX])/2;
+      rightdistance = (values[USONIC_RIGHT1_IDX] + values[USONIC_RIGHT2_IDX])/2.0;
     } else {
       rightdistance = values[USONIC_RIGHT1_IDX];
     }
@@ -256,12 +278,12 @@ void setXY(int* values) {
   
   if (rightdistance != -1) {
     if (leftdistance != -1) {
-      x = (rightdistance+ROBOT_LENGTH + leftdistance)/2;
+      x = (leftdistance-rightdistance)/2.0;
     } else {
-      x = rightdistance+ROBOT_LENGTH;
+      x = ARENA_HALFWIDTH-rightdistance-ROBOT_LENGTH/2;
     }
   } else if (leftdistance != -1) {
-      x = leftdistance;
+      x = leftdistance-ARENA_HALFWIDTH+ROBOT_LENGTH/2;
   }
   
   if (values[USONIC_BACK1_IDX] > values[USONIC_BACK2_IDX] && values[USONIC_BACK1_IDX] != -1) {
@@ -344,7 +366,7 @@ void driveMotor(int motor, double val) {
       }
       // gives a speed from 0 to 255, but guaranteed to be above the minimum speed
       // threshold to drive this particular motor.
-      int speedMapping = MIN_SPEED_A + abs(val)*(MAX_SPEED-MIN_SPEED_A);
+      int speedMapping = MIN_SPEED_A + motorABias*abs(val)*(MAX_SPEED-MIN_SPEED_A);
       analogWrite(PWM_PIN_A, speedMapping);
       if (val < 0) digitalWrite(DIR_PIN_A, LOW);
       else digitalWrite(DIR_PIN_A, HIGH);
@@ -355,7 +377,7 @@ void driveMotor(int motor, double val) {
         digitalWrite(PWM_PIN_B, LOW); 
         break;
       }
-      int speedMapping = MIN_SPEED_B + abs(val)*(MAX_SPEED-MIN_SPEED_B);
+      int speedMapping = MIN_SPEED_B + motorBBias*abs(val)*(MAX_SPEED-MIN_SPEED_B);
       analogWrite(PWM_PIN_B, speedMapping);
       if (val < 0) digitalWrite(DIR_PIN_B, HIGH);
       else digitalWrite(DIR_PIN_B, LOW);
@@ -366,7 +388,7 @@ void driveMotor(int motor, double val) {
         digitalWrite(PWM_PIN_C, LOW); 
         break;
       }
-      int speedMapping = MIN_SPEED_C + abs(val)*(MAX_SPEED-MIN_SPEED_C);
+      int speedMapping = MIN_SPEED_C + motorCBias*abs(val)*(MAX_SPEED-MIN_SPEED_C);
       analogWrite(PWM_PIN_C, speedMapping);
       if (val < 0) digitalWrite(DIR_PIN_C, LOW);
       else digitalWrite(DIR_PIN_C, HIGH);
@@ -377,7 +399,7 @@ void driveMotor(int motor, double val) {
         digitalWrite(PWM_PIN_D, LOW); 
         break;
       }
-      int speedMapping = MIN_SPEED_D + abs(val)*(MAX_SPEED-MIN_SPEED_D);
+      int speedMapping = MIN_SPEED_D + motorDBias*abs(val)*(MAX_SPEED-MIN_SPEED_D);
       analogWrite(PWM_PIN_D, speedMapping);
       if (val < 0) digitalWrite(DIR_PIN_D, LOW);
       else digitalWrite(DIR_PIN_D, HIGH);
@@ -418,5 +440,4 @@ void spinRobot(bool direction, double speed){
     driveMotor(3, -speed);
     driveMotor(4, -speed);
   }
-  
 }
