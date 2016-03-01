@@ -34,6 +34,26 @@
 #define MIN_SPEED_D 80.0
 #define MAX_SPEED 255
 
+#define BAUD_RATE 115200
+#define ULTRASONIC_SERIAL Serial1
+#define MAX_SERIAL_LEN 20
+#define NUM_SERIAL_TOKENS 7
+
+#define USONIC_RIGHT1_IDX 0
+#define USONIC_RIGHT2_IDX 1
+#define USONIC_BACK1_IDX 2
+#define USONIC_BACK2_IDX 3
+#define USONIC_LEFT_IDX 4
+#define USONIC_RIGHTANGLE_IDX 5
+#define USONIC_BACKANGLE_IDX 6
+
+#define START_RIGHTDISTANCE_MAX 50 // cm
+#define START_BACKDISTANCE_MAX 50 // cm
+
+#define ARENA_HALFWIDTH 122 // cm
+#define ROBOT_LENGTH 28 // cm
+
+
 
 /*---------------Module Function Prototypes---*/
 unsigned char TestForKey(void);
@@ -54,9 +74,13 @@ typedef enum{
 states current_state;
 states next_state;
 
+// current coordinates, defined relative to back left corner of bot. x=0 is middle of arena, y=0 is back
+int x; // cm
+int y; // cm
+
 void setup() {
-  // put your setup code here, to run once:
   Serial.begin(9600);
+  ULTRASONIC_SERIAL.begin(BAUD_RATE);
 
   //Initialize the motor pins 
   pinMode(PWM_PIN_A, OUTPUT);
@@ -69,25 +93,68 @@ void setup() {
   pinMode(DIR_PIN_D, OUTPUT);
   
   //Begin from the clockwise spinning state state
-  current_state = HALT;
-  next_state = HALT;
+  current_state = ORIENTING;
+  next_state = ORIENTING;
+  delay(300);
+  spinRobot(true,0.5);
+
+  //TODO: START TIMER
+
+  x = 100; // initial guess
+  y = 20; // initial guess
 }
 
 void loop() 
-{ 
+{
+  if (checkTimeup()) {
+    halt();
+    next_state = HALT;
+  }
+  
+  if (current_state != ORIENTING) {
+    int* values = parseString(readUltrasonicSerial());
+    setBiases(values);
+    setXY(values);
+  }
+  
   switch(current_state) {
     case HALT:
     {
-
       break;
     } 
     case ORIENTING: {
-      // need a way to not call this every time we loop, otherwise we will restart PWM each time
-      spinRobot(true,3);
+      if (checkOriented()) {
+        driveToFirstBucket();
+        next_state = DRIVING;
+      }
       break;
     }
     case DRIVING: {
-      
+      if (checkTape()) {
+        stopDriving();
+        startDumping();
+        next_state = DUMPING;
+      }
+      break;
+    }
+    case DUMPING: {
+      if (checkDoneDumping()) {
+        startReturning();
+        next_state = RETURNING;
+      }
+      break;
+    }
+    case RETURNING: {
+      if (checkDoneReturning()) {
+        stopDriving();
+        next_state = LOADING;
+      }
+      break;
+    } case LOADING: {
+      if (checkLoaded()) {
+        driveToBucket();
+        next_state = DRIVING;
+      }
       break;
     }
   }
@@ -97,6 +164,163 @@ void loop()
 
 //Function definitions
 /*----------------Module Functions--------------------------*/
+
+void halt() {
+  stopDriving();
+  stopDumping();
+}
+
+void stopDriving() {
+  digitalWrite(PWM_PIN_A, LOW);
+  digitalWrite(PWM_PIN_B, LOW);
+  digitalWrite(PWM_PIN_C, LOW);
+  digitalWrite(PWM_PIN_D, LOW);
+}
+
+void startDumping() {
+  
+}
+
+void stopDumping() {
+  
+}
+
+void driveToBucket() {
+  
+}
+
+void driveToFirstBucket() {
+  stopDriving();
+}
+
+void startReturning() {
+  
+}
+
+bool checkTape() {
+  return false;
+}
+
+bool checkLoaded() {
+  return false;
+}
+
+bool checkDoneReturning() {
+  return false;
+}
+
+bool checkDoneDumping() {
+  return false;
+}
+
+bool checkTimeup() {
+  return false;
+}
+
+bool checkOriented() {
+  int* values = parseString(readUltrasonicSerial());
+  
+  if (values[USONIC_RIGHTANGLE_IDX] == 0 
+      && values[USONIC_BACKANGLE_IDX] == 0 
+      && values[USONIC_RIGHT1_IDX] < START_RIGHTDISTANCE_MAX
+      && values[USONIC_RIGHT2_IDX] < START_RIGHTDISTANCE_MAX
+      && values[USONIC_BACK1_IDX] < START_BACKDISTANCE_MAX
+      && values[USONIC_BACK1_IDX] < START_BACKDISTANCE_MAX
+      && values[USONIC_BACK2_IDX] < START_BACKDISTANCE_MAX) {
+    setXY(values);
+    return true;
+  }
+  return false;
+}
+
+void setBiases(int* values) {
+  
+}
+
+void setXY(int* values) {
+  int rightdistance = values[USONIC_RIGHT1_IDX];
+  if (values[USONIC_RIGHT1_IDX] != -1) {
+    if (values[USONIC_RIGHT2_IDX] != -1) {
+      rightdistance = (values[USONIC_RIGHT1_IDX] + values[USONIC_RIGHT2_IDX])/2;
+    } else {
+      rightdistance = values[USONIC_RIGHT1_IDX];
+    }
+  } else {
+    if (values[USONIC_RIGHT2_IDX] != -1) {
+      rightdistance = values[USONIC_RIGHT2_IDX];
+    } else {
+      rightdistance = -1;
+    }
+  }
+  int leftdistance = values[USONIC_LEFT_IDX];
+  
+  if (rightdistance != -1) {
+    if (leftdistance != -1) {
+      x = (rightdistance+ROBOT_LENGTH + leftdistance)/2;
+    } else {
+      x = rightdistance+ROBOT_LENGTH;
+    }
+  } else if (leftdistance != -1) {
+      x = leftdistance;
+  }
+  
+  if (values[USONIC_BACK1_IDX] > values[USONIC_BACK2_IDX] && values[USONIC_BACK1_IDX] != -1) {
+    y = values[USONIC_BACK1_IDX];
+  } else if (values[USONIC_BACK2_IDX] != -1) {
+    y = values[USONIC_BACK2_IDX];
+  }
+}
+
+int* parseString(char* str) {
+  int values[NUM_SERIAL_TOKENS] = {-1,-1,-1,-1,-1,-1,-1};
+  int count = 0;
+  char* token = strtok(str," ");
+  while (token != NULL && count < NUM_SERIAL_TOKENS) {
+    values[count] = atoi(token);
+    token = strtok(NULL, " ");
+    count++;
+  }
+  return values;
+}
+
+char* processIncomingByte (const byte inByte) {
+  static char input_line [MAX_SERIAL_LEN];
+  static unsigned int input_pos = 0;
+
+  switch (inByte) {
+
+    case '\n':
+      input_line [input_pos] = 0;
+      
+      // reset buffer for next time
+      input_pos = 0;
+      return input_line;
+//      process_data (input_line);
+      break;
+    case '\r':   // discard carriage return
+      break;
+    default:
+      // keep adding if not full ... allow for terminating null byte
+      if (input_pos < (MAX_SERIAL_LEN - 1))
+        input_line [input_pos++] = inByte;
+      break;
+  }
+  return "";
+}
+
+char* readUltrasonicSerial() {
+  char* ultrasonicResult;
+  if (!ULTRASONIC_SERIAL.available()) return "";
+  
+  // once all bytes have been read, result will contain the resulting string
+  while (ULTRASONIC_SERIAL.available()) {
+    ultrasonicResult = processIncomingByte(ULTRASONIC_SERIAL.read());
+  }
+  ULTRASONIC_SERIAL.flush();
+  
+  return ultrasonicResult;
+}
+
 
 // 0º is straight forward, 90º is right, etc. v is between 0 and 1
 void driveAngle(int angleDeg, double v) {

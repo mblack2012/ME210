@@ -15,7 +15,7 @@
 #define MOTOR4_PWM_PIN 5
 #define MOTOR4_DIR_PIN 25
 
-#define MAX_INPUT 15
+#define MAX_INPUT 20
 
 void setup() {
   ULTRASONIC_SERIAL.begin(BAUD_RATE);
