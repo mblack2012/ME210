@@ -1,14 +1,14 @@
 #define ECHO_PIN1 3 // Echo Pin
-#define ECHO_PIN2 5 // Echo Pin
-#define ECHO_PIN3 7 // Echo Pin
-#define ECHO_PIN4 9 // Echo Pin
-#define ECHO_PIN5 11 // Echo Pin
+#define ECHO_PIN2 7 // Echo Pin
+#define ECHO_PIN3 9 // Echo Pin
+#define ECHO_PIN4 11 // Echo Pin
+#define ECHO_PIN5 5 // Echo Pin
 
 #define TRIG_PIN1 4 // Trigger Pin
-#define TRIG_PIN2 6 // Trigger Pin
-#define TRIG_PIN3 8 // Trigger Pin
-#define TRIG_PIN4 10 // Trigger Pin
-#define TRIG_PIN5 12 // Trigger Pin
+#define TRIG_PIN2 8 // Trigger Pin
+#define TRIG_PIN3 10 // Trigger Pin
+#define TRIG_PIN4 12 // Trigger Pin
+#define TRIG_PIN5 6 // Trigger Pin
 
 #define MAXIMIUM_RANGE 280 // Maximum range needed (cm)
 #define MAXIMUM_DURATION 16296 // maximum µs to wait for return pulse (based on max range)

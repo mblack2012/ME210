@@ -228,6 +228,11 @@ bool checkTimeup() {
   return false;
 }
 
+// returns array of booleans for each of the 5 front IR sensors, from left to right
+bool* readIR() {
+  return NULL;
+}
+
 bool checkOriented() {
   int* values = parseString(readUltrasonicSerial());
   
