@@ -1,4 +1,5 @@
 #include <Arduino.h>
+#include <Wire.h>
 /*************************************************************
   File:      ME210_Project_MainCode.ino
   Contents:  Overall firmware for the ME210 Winter 2016 B3K1 Team
@@ -11,6 +12,13 @@
   2016-2-28  IK   Initial skeleton version
  ************************************************************/
 
+// 0-4 are the five front IRs from left to right. 5 is the back IR. 
+#define IR_PIN0 40
+#define IR_PIN1 41
+#define IR_PIN2 42
+#define IR_PIN3 43
+#define IR_PIN4 44
+#define IR_PIN5 45
 
 //motor A
 #define PWM_PIN_A 9  // pwm pin for the motor
@@ -28,14 +36,12 @@
 #define PWM_PIN_D 3  // pwm pin for the motor
 #define DIR_PIN_D 2 //direction input to the H bridge
 
-#define MIN_SPEED_A 80.0
-#define MIN_SPEED_B 80.0
-#define MIN_SPEED_C 105.0
-#define MIN_SPEED_D 80.0
+#define MIN_SPEED_A 70.0
+#define MIN_SPEED_B 70.0
+#define MIN_SPEED_C 90.0
+#define MIN_SPEED_D 70.0
 #define MAX_SPEED 255
 
-#define BAUD_RATE 115200
-#define ULTRASONIC_SERIAL Serial1
 #define MAX_SERIAL_LEN 20
 #define NUM_SERIAL_TOKENS 7
 
@@ -47,13 +53,28 @@
 #define USONIC_RIGHTANGLE_IDX 5
 #define USONIC_BACKANGLE_IDX 6
 
-#define START_RIGHTDISTANCE_MAX 50 // cm
-#define START_BACKDISTANCE_MAX 50 // cm
+#define START_RIGHTDISTANCE_MAX 61 // cm
+#define START_BACKDISTANCE_MAX 61 // cm
 
 #define ARENA_HALFWIDTH 122 // cm
 #define ROBOT_LENGTH 28 // cm
 
+// half width of the back IR block
 #define IR_BLOCK_MARGIN 8 // cm
+
+// assumed y thickness of the IR block
+#define MIN_Y 8 // cm
+
+// assumed Y coord of back of robot when we dump
+#define MAX_Y 68 // cm
+
+// coordinates of the centers of the buckets, from left to right
+#define BUCKET1_X -81 // cm (-32in)
+#define BUCKET2_X -41 // cm (-16in)
+#define BUCKET3_X  -0 // cm (0in)
+#define BUCKET4_X  41 // cm (16in)
+#define BUCKET5_X  81 // cm (32in)
+
 
 
 /*---------------Module Function Prototypes---*/
@@ -84,10 +105,20 @@ double motorBBias;
 double motorCBias;
 double motorDBias;
 
-void setup() {
-  Serial.begin(9600);
-  ULTRASONIC_SERIAL.begin(BAUD_RATE);
+int* usonicValues;
+char* serialBuffer;
 
+void setup() {
+  Wire.begin(8);                // join i2c bus with address #8
+  Wire.onReceive(receiveEvent); // register event
+  
+  Serial.begin(9600);           // start serial for output
+  
+  usonicValues = (int*)malloc(sizeof(int)*7);
+  for (int i=0; i<7; i++) {
+    usonicValues[i] = -1;
+  }
+  
   //Initialize the motor pins 
   pinMode(PWM_PIN_A, OUTPUT);
   pinMode(DIR_PIN_A, OUTPUT); 
@@ -102,9 +133,6 @@ void setup() {
   current_state = ORIENTING;
   next_state = ORIENTING;
   delay(300);
-  spinRobot(true,0.5);
-
-  //TODO: START TIMER
 
   x = 90; // initial guess
   y = 20; // initial guess
@@ -113,19 +141,24 @@ void setup() {
   motorBBias = 1.0;
   motorCBias = 1.0;
   motorDBias = 1.0;
+  spinRobot(true,0.1);
 }
 
 void loop() 
 {
+//  Serial.print("X: ");
+//  Serial.print(x);
+//  Serial.print("  Y: ");
+//  Serial.println(y);
+  
   if (checkTimeup()) {
     halt();
     next_state = HALT;
   }
   
   if (current_state != ORIENTING) {
-    int* values = parseString(readUltrasonicSerial());
-    setBiases(values);
-    setXY(values);
+    setBiases();
+    setXY();
   }
   
   switch(current_state) {
@@ -150,6 +183,7 @@ void loop()
     }
     case DUMPING: {
       if (checkDoneDumping()) {
+        stopDumping();
         startReturning();
         next_state = RETURNING;
       }
@@ -189,23 +223,68 @@ void stopDriving() {
 }
 
 void startDumping() {
-  
+  // Need to call mini servo code
+  miniServoUp(); // Don't have Servo code, but they should be called here
+  // SET a timer...  checkDoneDumping checks for expired. How do we have timers called / configured?
 }
 
 void stopDumping() {
+  miniServoDown();
+}
+
+void miniServoUp() {
+  
+}
+
+void miniServoDown() {
   
 }
 
 void driveToBucket() {
-  bool* vals = readIR();
+  bool* vals = readFrontIR();
+  int target;
+  if (vals[2]) {
+    target = 3;
+  } else if (vals[3]) {
+    target = 4;
+  } else if (vals[1]) {
+    target = 2;
+  } else if (vals[4]) {
+    target = 5;
+  } else if (vals[0]) {
+    target = 1;
+  } else {
+    target = random(1,6);
+  }
+
+  switch (target) {
+    case 1: {
+      driveAngle(getDestAngle(BUCKET1_X, MAX_Y),1);
+      break;
+    } case 2: {
+      driveAngle(getDestAngle(BUCKET2_X, MAX_Y),1);
+      break;
+    } case 3: {
+      driveAngle(getDestAngle(BUCKET3_X, MAX_Y),1);
+      break;
+    } case 4: {
+      driveAngle(getDestAngle(BUCKET4_X, MAX_Y),1);
+      break;
+    } case 5: {
+      driveAngle(getDestAngle(BUCKET5_X, MAX_Y),1);
+      break;
+    };
+  }
 }
 
 void driveToFirstBucket() {
   stopDriving();
+  driveAngle(-90, 1);
+//  driveAngle(getDestAngle(BUCKET5_X, MAX_Y),1);
 }
 
 void startReturning() {
-  
+  driveAngle(getDestAngle(0,MIN_Y),1); 
 }
 
 bool checkTape() {
@@ -217,6 +296,7 @@ bool checkLoaded() {
 }
 
 bool checkDoneReturning() {
+  
   return false;
 }
 
@@ -228,33 +308,56 @@ bool checkTimeup() {
   return false;
 }
 
-// returns array of booleans for each of the 5 front IR sensors, from left to right
-bool* readIR() {
-  return NULL;
+
+// calculates angle we need to drive at to get to a destination
+int getDestAngle(int dest_x, int dest_y) {
+  if (dest_y > y) {
+    return 180*atan((dest_x-x)/(dest_y-y))/PI;
+  } else {
+    return 180+180*atan((dest_x-x)/(dest_y-y))/PI;
+  }
 }
 
-bool checkOriented() {
-  int* values = parseString(readUltrasonicSerial());
+// returns array of booleans for each of the 5 front IR sensors, from left to right
+bool* readFrontIR() {
+  bool vals[5] = {false, false, false, false, false};
+  if (digitalRead(IR_PIN0) == HIGH) vals[0] = true;
+  if (digitalRead(IR_PIN1) == HIGH) vals[1] = true;
+  if (digitalRead(IR_PIN2) == HIGH) vals[2] = true;
+  if (digitalRead(IR_PIN3) == HIGH) vals[3] = true;
+  if (digitalRead(IR_PIN4) == HIGH) vals[4] = true;
+  return vals;
+}
+
+bool readBackIR() {
+  if (digitalRead(IR_PIN5) == HIGH) return true;
+  else return false;
+}
+
+bool checkOriented() {  
+//  Serial.print(usonicValues[USONIC_RIGHTANGLE_IDX]);
+//  Serial.print(" ");
+//  Serial.println(usonicValues[USONIC_BACKANGLE_IDX]);
   
-  if (values[USONIC_RIGHTANGLE_IDX] == 0 
-      && values[USONIC_BACKANGLE_IDX] == 0 
-      && values[USONIC_RIGHT1_IDX] < START_RIGHTDISTANCE_MAX
-      && values[USONIC_RIGHT2_IDX] < START_RIGHTDISTANCE_MAX
-      && values[USONIC_BACK1_IDX] < START_BACKDISTANCE_MAX
-      && values[USONIC_BACK1_IDX] < START_BACKDISTANCE_MAX
-      && values[USONIC_BACK2_IDX] < START_BACKDISTANCE_MAX) {
-    setXY(values);
+  if (usonicValues[USONIC_RIGHTANGLE_IDX] > 0 && usonicValues[USONIC_RIGHTANGLE_IDX] < 5
+      && usonicValues[USONIC_BACKANGLE_IDX] > 0 && usonicValues[USONIC_BACKANGLE_IDX] < 5
+      && usonicValues[USONIC_RIGHT1_IDX] < START_RIGHTDISTANCE_MAX
+      && usonicValues[USONIC_RIGHT2_IDX] < START_RIGHTDISTANCE_MAX
+      && usonicValues[USONIC_BACK1_IDX] < START_BACKDISTANCE_MAX
+      && usonicValues[USONIC_BACK1_IDX] < START_BACKDISTANCE_MAX
+      && usonicValues[USONIC_BACK2_IDX] < START_BACKDISTANCE_MAX) {
+    setXY();
     return true;
   }
   return false;
 }
 
-void setBiases(int* values) {
+void setBiases() {
   int angle = 0;
   if (abs(x) > ROBOT_LENGTH+IR_BLOCK_MARGIN) {
-    angle = values[USONIC_BACKANGLE_IDX];
+    angle = usonicValues[USONIC_BACKANGLE_IDX];
   } else {
-    angle = values[USONIC_RIGHTANGLE_IDX];
+    angle = usonicValues[USONIC_RIGHTANGLE_IDX];
   }
 
   // NEEDS CALIBRATION
@@ -264,22 +367,22 @@ void setBiases(int* values) {
   motorDBias = 1+angle/20.0;
 }
 
-void setXY(int* values) {
-  int rightdistance = values[USONIC_RIGHT1_IDX];
-  if (values[USONIC_RIGHT1_IDX] != -1) {
-    if (values[USONIC_RIGHT2_IDX] != -1) {
-      rightdistance = (values[USONIC_RIGHT1_IDX] + values[USONIC_RIGHT2_IDX])/2.0;
+void setXY() {
+  int rightdistance = usonicValues[USONIC_RIGHT1_IDX];
+  if (usonicValues[USONIC_RIGHT1_IDX] != -1) {
+    if (usonicValues[USONIC_RIGHT2_IDX] != -1) {
+      rightdistance = (usonicValues[USONIC_RIGHT1_IDX] + usonicValues[USONIC_RIGHT2_IDX])/2.0;
     } else {
-      rightdistance = values[USONIC_RIGHT1_IDX];
+      rightdistance = usonicValues[USONIC_RIGHT1_IDX];
     }
   } else {
-    if (values[USONIC_RIGHT2_IDX] != -1) {
-      rightdistance = values[USONIC_RIGHT2_IDX];
+    if (usonicValues[USONIC_RIGHT2_IDX] != -1) {
+      rightdistance = usonicValues[USONIC_RIGHT2_IDX];
     } else {
       rightdistance = -1;
     }
   }
-  int leftdistance = values[USONIC_LEFT_IDX];
+  int leftdistance = usonicValues[USONIC_LEFT_IDX];
   
   if (rightdistance != -1) {
     if (leftdistance != -1) {
@@ -291,61 +394,11 @@ void setXY(int* values) {
       x = leftdistance-ARENA_HALFWIDTH+ROBOT_LENGTH/2;
   }
   
-  if (values[USONIC_BACK1_IDX] > values[USONIC_BACK2_IDX] && values[USONIC_BACK1_IDX] != -1) {
-    y = values[USONIC_BACK1_IDX];
-  } else if (values[USONIC_BACK2_IDX] != -1) {
-    y = values[USONIC_BACK2_IDX];
+  if (usonicValues[USONIC_BACK1_IDX] > usonicValues[USONIC_BACK2_IDX] && usonicValues[USONIC_BACK1_IDX] != -1) {
+    y = usonicValues[USONIC_BACK1_IDX];
+  } else if (usonicValues[USONIC_BACK2_IDX] != -1) {
+    y = usonicValues[USONIC_BACK2_IDX];
   }
-}
-
-int* parseString(char* str) {
-  int values[NUM_SERIAL_TOKENS] = {-1,-1,-1,-1,-1,-1,-1};
-  int count = 0;
-  char* token = strtok(str," ");
-  while (token != NULL && count < NUM_SERIAL_TOKENS) {
-    values[count] = atoi(token);
-    token = strtok(NULL, " ");
-    count++;
-  }
-  return values;
-}
-
-char* processIncomingByte (const byte inByte) {
-  static char input_line [MAX_SERIAL_LEN];
-  static unsigned int input_pos = 0;
-
-  switch (inByte) {
-
-    case '\n':
-      input_line [input_pos] = 0;
-      
-      // reset buffer for next time
-      input_pos = 0;
-      return input_line;
-//      process_data (input_line);
-      break;
-    case '\r':   // discard carriage return
-      break;
-    default:
-      // keep adding if not full ... allow for terminating null byte
-      if (input_pos < (MAX_SERIAL_LEN - 1))
-        input_line [input_pos++] = inByte;
-      break;
-  }
-  return "";
-}
-
-char* readUltrasonicSerial() {
-  char* ultrasonicResult;
-  if (!ULTRASONIC_SERIAL.available()) return "";
-  
-  // once all bytes have been read, result will contain the resulting string
-  while (ULTRASONIC_SERIAL.available()) {
-    ultrasonicResult = processIncomingByte(ULTRASONIC_SERIAL.read());
-  }
-  ULTRASONIC_SERIAL.flush();
-  
-  return ultrasonicResult;
 }
 
 
@@ -445,4 +498,53 @@ void spinRobot(bool direction, double speed){
     driveMotor(3, -speed);
     driveMotor(4, -speed);
   }
+}
+
+
+// SERIAL FUNCTIONS
+
+// updates ultrasonic array with results
+void parseString(char* result) {  
+  int count = 0;
+  char* token = strtok(result," ");
+  while (token != NULL && count < NUM_SERIAL_TOKENS) {
+    usonicValues[count] = atoi(token);
+    token = strtok(NULL, " ");
+    count++;
+  }  
+}
+
+char* processIncomingByte (const byte inByte) {
+  static char input_line [MAX_SERIAL_LEN];
+  static unsigned int input_pos = 0;
+
+  switch (inByte) {
+    case '\n':
+      input_line [input_pos] = 0;
+      
+      // reset buffer for next time
+      input_pos = 0;
+      return input_line;
+      break;
+    case '\r':   // discard carriage return
+      break;
+    default:
+      // keep adding if not full ... allow for terminating null byte
+      if (input_pos < (MAX_SERIAL_LEN - 1))
+        input_line [input_pos++] = inByte;
+      break;
+  }
+}
+
+
+// function that executes whenever data is received from master
+// this function is registered as an event, see setup()
+void receiveEvent(int howMany) {
+  char* result;
+  while (0 < Wire.available()) { // loop through all but the last
+    result = processIncomingByte((char)Wire.read()); // receive byte as a character
+  }
+//  Serial.println(result);
+  parseString(result);
+  
 }
