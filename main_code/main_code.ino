@@ -36,10 +36,10 @@
 #define PWM_PIN_D 3  // pwm pin for the motor
 #define DIR_PIN_D 2 //direction input to the H bridge
 
-#define MIN_SPEED_A 70.0
-#define MIN_SPEED_B 70.0
-#define MIN_SPEED_C 90.0
-#define MIN_SPEED_D 70.0
+#define MIN_SPEED_A 80.0
+#define MIN_SPEED_B 80.0
+#define MIN_SPEED_C 105.0
+#define MIN_SPEED_D 80.0
 #define MAX_SPEED 255
 
 #define MAX_SERIAL_LEN 20
@@ -106,7 +106,6 @@ double motorCBias;
 double motorDBias;
 
 int* usonicValues;
-char* serialBuffer;
 
 void setup() {
   Wire.begin(8);                // join i2c bus with address #8
@@ -129,7 +128,7 @@ void setup() {
   pinMode(PWM_PIN_D, OUTPUT);
   pinMode(DIR_PIN_D, OUTPUT);
   
-  //Begin from the clockwise spinning state state
+  //Begin from the clockwise spinning state
   current_state = ORIENTING;
   next_state = ORIENTING;
   delay(300);
@@ -141,7 +140,7 @@ void setup() {
   motorBBias = 1.0;
   motorCBias = 1.0;
   motorDBias = 1.0;
-  spinRobot(true,0.1);
+  spinRobot(true,0.15);
 }
 
 void loop() 
@@ -165,11 +164,13 @@ void loop()
     case HALT:
     {
       break;
-    } 
+    }
     case ORIENTING: {
       if (checkOriented()) {
-        driveToFirstBucket();
-        next_state = DRIVING;
+//        driveToFirstBucket();
+//        next_state = DRIVING;
+        startReturning();
+        next_state = RETURNING;
       }
       break;
     }
@@ -279,7 +280,8 @@ void driveToBucket() {
 
 void driveToFirstBucket() {
   stopDriving();
-  driveAngle(-90, 1);
+  
+//  driveAngle(-90, 1);
 //  driveAngle(getDestAngle(BUCKET5_X, MAX_Y),1);
 }
 
@@ -296,8 +298,8 @@ bool checkLoaded() {
 }
 
 bool checkDoneReturning() {
-  
-  return false;
+  if (abs(x) < 3 && abs(y-MIN_Y) < 3) return true;
+  else return false;
 }
 
 bool checkDoneDumping() {
@@ -335,12 +337,9 @@ bool readBackIR() {
 }
 
 bool checkOriented() {  
-//  Serial.print(usonicValues[USONIC_RIGHTANGLE_IDX]);
-//  Serial.print(" ");
-//  Serial.println(usonicValues[USONIC_BACKANGLE_IDX]);
   
-  if (usonicValues[USONIC_RIGHTANGLE_IDX] > 0 && usonicValues[USONIC_RIGHTANGLE_IDX] < 5
-      && usonicValues[USONIC_BACKANGLE_IDX] > 0 && usonicValues[USONIC_BACKANGLE_IDX] < 5
+  if (usonicValues[USONIC_RIGHTANGLE_IDX] > 0 && usonicValues[USONIC_RIGHTANGLE_IDX] > -3
+      && usonicValues[USONIC_BACKANGLE_IDX] > 0 && usonicValues[USONIC_BACKANGLE_IDX] > -3
       && usonicValues[USONIC_RIGHT1_IDX] < START_RIGHTDISTANCE_MAX
       && usonicValues[USONIC_RIGHT2_IDX] < START_RIGHTDISTANCE_MAX
       && usonicValues[USONIC_BACK1_IDX] < START_BACKDISTANCE_MAX
@@ -544,7 +543,7 @@ void receiveEvent(int howMany) {
   while (0 < Wire.available()) { // loop through all but the last
     result = processIncomingByte((char)Wire.read()); // receive byte as a character
   }
-//  Serial.println(result);
+  Serial.println(result);
   parseString(result);
   
 }

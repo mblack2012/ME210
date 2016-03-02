@@ -41,62 +41,8 @@ void loop() {
   int distance3 = pulsePin(ECHO_PIN3, TRIG_PIN3);
   int distance4 = pulsePin(ECHO_PIN4, TRIG_PIN4);
   int distance5 = pulsePin(ECHO_PIN5, TRIG_PIN5);
-
-
-//  Serial.print(distance1);
-//  Serial.print(" ");
-//  Serial.print(distance2);
-//  Serial.print(" ");
-//  Serial.print(distance3);
-//  Serial.print(" ");
-//  Serial.print(distance4);
-//  Serial.print(" ");
-//  Serial.print(distance5);
-//  Serial.print(" ");
-//  Serial.print(getAngle(distance1, distance2));
-//  Serial.print(" ");
-//  Serial.println(getAngle(distance3, distance4));
-
+  
   Wire.beginTransmission(8); // transmit to device #8
-//  char buf1[5];
-//  char buf2[5];
-//  char buf3[5];
-//  char buf4[5];
-//  char buf5[5];
-//  char buf6[5];
-//  char buf7[5];
-//
-//  itoa(distance1,buf1,10);
-//  itoa(distance2,buf2,10);
-//  itoa(distance3,buf3,10);
-//  itoa(distance4,buf4,10);
-//  itoa(distance5,buf5,10);
-//  itoa(getAngle(distance1, distance2),buf6,10);
-//  itoa(getAngle(distance3, distance4),buf7,10);
-
-  
-  
-//  Serial.print(buf1);
-//  Serial.print(" ");
-//  Serial.print(buf2);
-//  Serial.print(" ");
-//  Serial.println(buf6);
-//  
-//  
-//  Wire.write(buf1);
-//  Wire.write(" ");
-//  Wire.write(buf2);
-//  Wire.write(" ");
-//  Wire.write(buf3);
-//  Wire.write(" ");
-//  Wire.write(buf4);
-//  Wire.write(" ");
-//  Wire.write(buf5);
-//  Wire.write(" ");
-//  Wire.write(buf6);
-//  Wire.write(" ");
-//  Wire.write(buf7);
-//  Wire.write("\n");
 
   char buffer[30];
   sprintf(buffer, "%d %d %d %d %d %d %d\n", distance1, distance2, distance3, distance4, distance5, getAngle(distance1, distance2),getAngle(distance3, distance4)); 
@@ -131,6 +77,4 @@ int pulsePin(int echoPin, int trigPin) {
     distance = -1;
   }
   return distance;
-
-
 }
