@@ -1,5 +1,7 @@
 #include <Arduino.h>
 #include <Wire.h>
+//#include <Servo.h>
+
 /*************************************************************
   File:      ME210_Project_MainCode.ino
   Contents:  Overall firmware for the ME210 Winter 2016 B3K1 Team
@@ -19,6 +21,15 @@
 #define IR_PIN3 43
 #define IR_PIN4 44
 #define IR_PIN5 45
+#define TAPE_PIN 24
+
+//Gate Servo
+#define GATE_SERVO 4
+//Servo gateServo;
+
+//Ramp Servo
+#define RAMP_SERVO 5
+//Servo rampServo;
 
 //motor A
 #define PWM_PIN_A 9  // pwm pin for the motor
@@ -36,10 +47,10 @@
 #define PWM_PIN_D 3  // pwm pin for the motor
 #define DIR_PIN_D 2 //direction input to the H bridge
 
-#define MIN_SPEED_A 80.0
-#define MIN_SPEED_B 80.0
-#define MIN_SPEED_C 105.0
-#define MIN_SPEED_D 80.0
+#define MIN_SPEED_A 70.0
+#define MIN_SPEED_B 70.0
+#define MIN_SPEED_C 70.0
+#define MIN_SPEED_D 70.0
 #define MAX_SPEED 255
 
 #define MAX_SERIAL_LEN 20
@@ -75,12 +86,15 @@
 #define BUCKET4_X  41 // cm (16in)
 #define BUCKET5_X  81 // cm (32in)
 
-
+//keep track of ramp deployment
+bool deployed = false;
 
 /*---------------Module Function Prototypes---*/
 unsigned char TestForKey(void);
 void RespToKey(void);
 void spinRobot(bool direction, double speed);
+//void driveGateServo(Servo gateServo);
+//void deployRampServo(Servo rampServo, bool* deployed);
 
 // FSM STATE DEFINITIONS
 typedef enum{
@@ -127,10 +141,19 @@ void setup() {
   pinMode(DIR_PIN_C, OUTPUT); 
   pinMode(PWM_PIN_D, OUTPUT);
   pinMode(DIR_PIN_D, OUTPUT);
+  pinMode(TAPE_PIN, INPUT);
+  
+  //digitalWrite(PWM_PIN_A,LOW);
+  //digitalWrite(PWM_PIN_B,LOW);
+  //digitalWrite(PWM_PIN_C,LOW);
+  //digitalWrite(PWM_PIN_D,LOW);
   
   //Begin from the clockwise spinning state
-  current_state = ORIENTING;
-  next_state = ORIENTING;
+  //current_state = ORIENTING;
+  //next_state = ORIENTING;
+  stopDriving();
+  current_state = HALT;
+  next_state = HALT; 
   delay(300);
 
   x = 90; // initial guess
@@ -140,7 +163,13 @@ void setup() {
   motorBBias = 1.0;
   motorCBias = 1.0;
   motorDBias = 1.0;
-  spinRobot(true,0.15);
+//  spinRobot(true,0.15);
+  
+  //Set up the servos
+  //gateServo.attach(GATE_SERVO);
+  //rampServo.attach(RAMP_SERVO);
+  //driveGateServo(gateServo);
+  //deployRampServo(rampServo);
 }
 
 void loop() 
@@ -149,7 +178,6 @@ void loop()
 //  Serial.print(x);
 //  Serial.print("  Y: ");
 //  Serial.println(y);
-  
   if (checkTimeup()) {
     halt();
     next_state = HALT;
@@ -163,6 +191,11 @@ void loop()
   switch(current_state) {
     case HALT:
     {
+      //Serial.print(checkTape());
+      //deployRampServo(rampServo, &deployed);
+      //driveGateServo(gateServo);
+      Serial.println("HALT");
+      next_state = HALT;
       break;
     }
     case ORIENTING: {
@@ -175,6 +208,7 @@ void loop()
       break;
     }
     case DRIVING: {
+      driveAngle(0,0.5);
       if (checkTape()) {
         stopDriving();
         startDumping();
@@ -217,10 +251,10 @@ void halt() {
 }
 
 void stopDriving() {
-  digitalWrite(PWM_PIN_A, LOW);
-  digitalWrite(PWM_PIN_B, LOW);
-  digitalWrite(PWM_PIN_C, LOW);
-  digitalWrite(PWM_PIN_D, LOW);
+  analogWrite(PWM_PIN_A, MIN_SPEED_A);
+  analogWrite(PWM_PIN_B, MIN_SPEED_B);
+  analogWrite(PWM_PIN_C, MIN_SPEED_C);
+  analogWrite(PWM_PIN_D, MIN_SPEED_D);
 }
 
 void startDumping() {
@@ -290,7 +324,7 @@ void startReturning() {
 }
 
 bool checkTape() {
-  return false;
+  return !digitalRead(TAPE_PIN);
 }
 
 bool checkLoaded() {
@@ -543,7 +577,38 @@ void receiveEvent(int howMany) {
   while (0 < Wire.available()) { // loop through all but the last
     result = processIncomingByte((char)Wire.read()); // receive byte as a character
   }
-  Serial.println(result);
+  //Serial.println(result);
   parseString(result);
   
 }
+/*
+void driveGateServo(Servo gateServo){
+  int pos;
+  for(pos = 35; pos <= 165; pos += 10) // goes from 0 degrees to 180 degrees 
+  {                                  // in steps of 1 degree 
+    gateServo.write(pos);              // tell servo to go to position in variable 'pos' 
+    delay(15);                       // waits 15ms for the servo to reach the position 
+  }
+  gateServo.detach();
+  delay(1000);
+  gateServo.attach(GATE_SERVO); 
+  for(pos = 165; pos>=35; pos-=10)     // goes from 180 degrees to 0 degrees 
+  {                                
+    gateServo.write(pos);              // tell servo to go to position in variable 'pos' 
+    delay(15);                       // waits 15ms for the servo to reach the position 
+  }
+  gateServo.detach();
+  delay(1000);
+  gateServo.attach(GATE_SERVO); 
+}
+
+void deployRampServo(Servo rampServo, bool* deployed){
+    if (!(*deployed)){
+      rampServo.write(1200);    // Rotate servo to center
+      delay(690);
+      rampServo.write(1500);     // Rotate servo clockwise
+      delay(1000);
+    }
+    *deployed = true; 
+}
+*/
