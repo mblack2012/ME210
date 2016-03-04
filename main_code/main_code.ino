@@ -54,10 +54,10 @@ Servo rampServo;
 #define PWM_PIN_D 3  // pwm pin for the motor
 #define DIR_PIN_D 2 //direction input to the H bridge
 
-#define MIN_SPEED_A 70.0
-#define MIN_SPEED_B 75.0
-#define MIN_SPEED_C 75.0
-#define MIN_SPEED_D 70.0
+#define MIN_SPEED_A 85.0
+#define MIN_SPEED_B 85.0
+#define MIN_SPEED_C 85.0
+#define MIN_SPEED_D 85.0
 #define MAX_SPEED 255
 
 #define MAX_SERIAL_LEN 20
@@ -91,9 +91,9 @@ Servo rampServo;
 
 // coordinates of the centers of the buckets, from left to right
 #define BUCKET1_X -76 // cm (-32in)
-#define BUCKET2_X -41 // cm (-16in)
+#define BUCKET2_X -58 // cm (-16in)
 #define BUCKET3_X  -0 // cm (0in)
-#define BUCKET4_X  41 // cm (16in)
+#define BUCKET4_X  58 // cm (16in)
 #define BUCKET5_X  76  // cm (32in)
 
 //keep track of ramp deployment
@@ -127,6 +127,7 @@ states next_state;
 
 //number of chips deployed so far
 int n_chips_deployed = 0;
+int target;
 
 // current coordinates, defined relative to middle back side of bot. x=0 is middle of arena, y=0 is back
 int x; // cm
@@ -186,11 +187,11 @@ void setup() {
   
 //  Set up the servos
   gateServo.attach(GATE_SERVO);
-  gateServo.write(160);
+  gateServo.write(170);
   gateServo_0.attach(GATE_SERVO_0);
   gateServo_0.write(0);
-//  driveGateServo(gateServo);
-//  gateServo.detach();
+
+
   
   spinRobot(true,0.15);
   current_state = INITIAL_ORIENTING;
@@ -201,7 +202,7 @@ void setup() {
 //  next_state = DRIVING;
 }
 
-void loop() 
+void loop()
 {
 //  Serial.print("X: ");
 //  Serial.print(x);
@@ -228,13 +229,13 @@ void loop()
       break;
     }
     case INITIAL_ORIENTING: {
-//      Serial.println("loop");
       if (checkOriented()) {
-        
-        Serial.print(x);
-        Serial.print(" ");
-        Serial.println(y);
         stopDriving();
+
+        delay(50);
+        precisionOrient(true);
+        
+        target = 5;
         driveToFirstBucket();
         next_state = DRIVING;
       }
@@ -254,18 +255,81 @@ void loop()
     }
     break;
     case DRIVING: {
-      if (checkTape()) {
+//      if (checkTape()) {
+//        stopDriving();
+//        deployChips();
+//        next_state = DUMPING;
+//      }
+      if (target == 5) {
+        if (checkTape()) {
+          stopDriving();
+          precisionOrient(false);
+          driveAngle(0,0.25);
+          delay(80);
+          stopDriving();
+          deployChips();
+          delay(500);
+          driveAngle(180,0.25);
+          delay(100);
+          stopDriving();
+          precisionOrient(false);
+          target--;
+        }
+        
+      } else if (target == 4) {
+        driveAngle(-95,0.5);
+        delay(1300);
+        stopDriving();
+        driveAngle(0,0.25);
+        delay(100);
+        stopDriving();
+        delay(300);
+        deployChips();
+        target--;
+        
+      } else if (target == 3) {
+        driveAngle(-95,0.5);
+        delay(1300);
+        stopDriving();
+        driveAngle(0,0.25);
+        delay(200);
+        stopDriving();
+        
+        deployChips();
+        delay(200);
+        driveAngle(180,0.25);
+        delay(600);
+        stopDriving();
+//        precisionOrient(false);
+        delay(100);
+        
+        gateServo.attach(GATE_SERVO);
+        gateServo.write(170);
+        gateServo_0.attach(GATE_SERVO_0);
+        gateServo_0.write(0);
+        
+        n_chips_deployed = 1;
+        startReturning();
+        next_state = RETURNING;
+
+      } else if (checkAtBucket()) {
         stopDriving();
         deployChips();
-        next_state = DUMPING;
+        delay(300);
+//        driveToBucket();
+        driveAngle (-95,0.5);
+        target--;
+      } else {
+        stopDriving();
+        delay(1000);
       }
       break;
     }
     case DUMPING: {
       if (checkDoneDumping()) {
-        stopDumping();
+//        stopDumping();
         startReturning();
-        next_state = RETURNING;
+        next_state = DRIVING;
       }
       break;
     }
@@ -280,7 +344,9 @@ void loop()
       break;
     } case LOADING: {
       if (checkLoaded()) {
-        driveToBucket();
+        target = 5;
+//        driveToBucket();
+        driveAngle(45,0.5);
         next_state = DRIVING;
       }
       break;
@@ -295,7 +361,7 @@ void loop()
 
 void halt() {
   stopDriving();
-  stopDumping();
+//  stopDumping();
 }
 
 void stopDriving() {
@@ -323,34 +389,67 @@ void startDumping0() {
   delay(1500);
 }
 
-void stopDumping() {
-//  miniServoDown();
+void precisionOrient(bool useBack) {
+  delay(100);
+  if (useBack) {
+    float angle1 = atan((usonicValues[1] - usonicValues[0]) / SENSOR_SEPARATION) * 180 / M_PI;
+    float angle2 = atan((usonicValues[3] - usonicValues[2]) / SENSOR_SEPARATION) * 180 / M_PI;
+     
+    while (abs(angle1)>1 || abs(angle2)>1) {
+      if (angle1 < 0) {
+        spinRobot(true,0.40);
+        delay(7+sqrt(abs(angle1))*20);
+        stopDriving();
+      } else {
+        spinRobot(false,0.40);
+        delay(7+sqrt(abs(angle1))*20);
+        stopDriving();
+      }
+      delay(200);
+      angle1 = atan((usonicValues[1] - usonicValues[0]) / SENSOR_SEPARATION) * 180 / M_PI;
+      angle2 = atan((usonicValues[3] - usonicValues[2]) / SENSOR_SEPARATION) * 180 / M_PI;
+    }
+  } else {
+    float angle1 = atan((usonicValues[1] - usonicValues[0]) / SENSOR_SEPARATION) * 180 / M_PI;
+     
+    while (abs(angle1)>1) {
+      if (angle1 < 0) {
+        spinRobot(true,0.40);
+        delay(7+sqrt(abs(angle1))*20);
+        stopDriving();
+      } else {
+        spinRobot(false,0.40);
+        delay(7+sqrt(abs(angle1))*20);
+        stopDriving();
+      }
+      delay(200);
+      angle1 = atan((usonicValues[1] - usonicValues[0]) / SENSOR_SEPARATION) * 180 / M_PI;
+    }
+  }
+  
+  stopDriving();
+  delay(500);
+//  delay(100000);
 }
 
-void miniServoUp() {
-  
-}
-
-void miniServoDown() {
-  
-}
 
 void driveToBucket() {
-  bool* vals = readFrontIR();
-  int target;
-  if (vals[2]) {
-    target = 3;
-  } else if (vals[3]) {
-    target = 4;
-  } else if (vals[1]) {
-    target = 2;
-  } else if (vals[4]) {
-    target = 5;
-  } else if (vals[0]) {
-    target = 1;
-  } else {
-    target = random(1,6);
-  }
+  
+//  bool* vals = readFrontIR();
+//  int target;
+//  if (vals[2]) {
+//    target = 3;
+//  } else if (vals[3]) {
+//    target = 4;
+//  } else if (vals[1]) {
+//    target = 2;
+//  } else if (vals[4]) {
+//    target = 5;
+//  } else if (vals[0]) {
+//    target = 1;
+//  } else {
+//    target = random(1,6);
+//  }
 
   switch (target) {
     case 1: {
@@ -385,8 +484,40 @@ void startReturning() {
 
 bool checkTape() {
   return !digitalRead(TAPE_PIN) || y > MAX_Y - 6;
+//  return y > MAX_Y - 6;
   
 //  return false;
+}
+
+bool checkAtBucket() {
+  switch (target) {
+    case 0: {
+      stopDriving();
+      delay(10000);
+      break;
+    }
+    case 1: {
+      if (abs(x-BUCKET1_X) < 5) return true;
+      break;
+    }
+    case 2: {
+      if (abs(x-BUCKET2_X) < 5) return true;
+      break;
+    }
+    case 3: {
+      if (abs(x-BUCKET3_X) < 5) return true;
+      break;
+    }
+    case 4: {
+      if (abs(x-BUCKET4_X) < 5) return true;
+      break;
+    }
+    case 5: {
+      if (abs(x-BUCKET5_X) < 5) return true;
+      break;
+    }
+  }
+  return false;
 }
 
 bool checkLoaded() {
@@ -436,8 +567,8 @@ bool readBackIR() {
 
 bool checkOriented() {  
   
-  if (abs(usonicValues[USONIC_RIGHTANGLE_IDX]+12) < 5
-      && abs(usonicValues[USONIC_BACKANGLE_IDX]+12) < 5
+  if (abs(usonicValues[USONIC_RIGHTANGLE_IDX]+20) < 5
+      && abs(usonicValues[USONIC_BACKANGLE_IDX]+20) < 5
       && usonicValues[USONIC_RIGHT1_IDX] < START_RIGHTDISTANCE_MAX
       && usonicValues[USONIC_RIGHT2_IDX] < START_RIGHTDISTANCE_MAX
       && usonicValues[USONIC_BACK1_IDX] < START_BACKDISTANCE_MAX
@@ -483,22 +614,22 @@ void setBiases() {
 
 void setXY() {
   int rightdistance = usonicValues[USONIC_RIGHT1_IDX];
-  rightdistance = (usonicValues[USONIC_RIGHT1_IDX] + usonicValues[USONIC_RIGHT2_IDX])/2.0;
-//  if (usonicValues[USONIC_RIGHT1_IDX] != -1) {
-//    if (usonicValues[USONIC_RIGHT2_IDX] != -1) {
-//      
-//    } else {
-//      rightdistance = usonicValues[USONIC_RIGHT1_IDX];
-//    }
-//  } else {
-//    if (usonicValues[USONIC_RIGHT2_IDX] != -1) {
-//      rightdistance = usonicValues[USONIC_RIGHT2_IDX];
-//    } else {
-//      rightdistance = -1;
-//    }
-//  }
-  int leftdistance = usonicValues[USONIC_LEFT_IDX];
-  
+//  rightdistance = (usonicValues[USONIC_RIGHT1_IDX] + usonicValues[USONIC_RIGHT2_IDX])/2.0;
+  if (usonicValues[USONIC_RIGHT1_IDX] != -1) {
+    if (usonicValues[USONIC_RIGHT2_IDX] != -1) {
+      rightdistance = (usonicValues[USONIC_RIGHT1_IDX] + usonicValues[USONIC_RIGHT2_IDX])/2.0;
+    } else {
+      rightdistance = usonicValues[USONIC_RIGHT1_IDX];
+    }
+  } else {
+    if (usonicValues[USONIC_RIGHT2_IDX] != -1) {
+      rightdistance = usonicValues[USONIC_RIGHT2_IDX];
+    } else {
+      rightdistance = -1;
+    }
+  }
+//  int leftdistance = usonicValues[USONIC_LEFT_IDX];
+//  
 //  if (rightdistance != -1) {
 //    if (leftdistance != -1) {
 //      x = (leftdistance-rightdistance)/2.0;
@@ -511,11 +642,21 @@ void setXY() {
   x = ARENA_HALFWIDTH-rightdistance-ROBOT_LENGTH/2;
   
   
-  if (usonicValues[USONIC_BACK1_IDX] > usonicValues[USONIC_BACK2_IDX] && usonicValues[USONIC_BACK1_IDX] != -1) {
-    y = usonicValues[USONIC_BACK1_IDX];
-  } else if (usonicValues[USONIC_BACK2_IDX] != -1) {
+  if (usonicValues[USONIC_BACK1_IDX] > usonicValues[USONIC_BACK2_IDX] && usonicValues[USONIC_BACK2_IDX] != -1) {
     y = usonicValues[USONIC_BACK2_IDX];
+  } else if (usonicValues[USONIC_BACK1_IDX] != -1) {
+    y = usonicValues[USONIC_BACK1_IDX];
   }
+
+//  if (usonicValues[USONIC_BACK1_IDX] != -1) {
+//    if (usonicValues[USONIC_BACK2_IDX] != -1) {
+//      y = (usonicValues[USONIC_BACK1_IDX]+usonicValues[USONIC_BACK2_IDX])/2;
+//    }
+//  } else if (usonicValues[USONIC_BACK2_IDX] != -1) {
+//    y = usonicValues[USONIC_BACK2_IDX];
+//  }
+
+  Serial.println(x);
 }
 
 
@@ -646,12 +787,12 @@ void parseString(char* result) {
   }
   usonicValues[5] = atan((usonicValues[1] - usonicValues[0]) / SENSOR_SEPARATION) * 180 / M_PI;
   usonicValues[6] = atan((usonicValues[3] - usonicValues[2]) / SENSOR_SEPARATION) * 180 / M_PI;
-
-  for (int i=0; i<7; i++) {
-    Serial.print(usonicValues[i]);
-    Serial.print(" ");
-  }
-  Serial.println();
+//
+//  for (int i=0; i<7; i++) {
+//    Serial.print(usonicValues[i]);
+//    Serial.print(" ");
+//  }
+//  Serial.println();
 }
 
 char* processIncomingByte (const byte inByte) {
@@ -714,7 +855,7 @@ void driveGateServo(){
 void driveGate0Servo(){
   int pos;
 
-  for(pos = 10; pos <= 100; pos += 5) // goes from 0 degrees to 180 degrees 
+  for(pos = 20; pos <= 90; pos += 5) // goes from 0 degrees to 180 degrees 
   {                                  // in steps of 1 degree 
     gateServo_0.write(pos);              // tell servo to go to position in variable 'pos' 
     delay(15);                       // waits 15ms for the servo to reach the position 
