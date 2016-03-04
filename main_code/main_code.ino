@@ -23,9 +23,13 @@
 #define IR_PIN5 45
 #define TAPE_PIN 24
 
-//Gate Servo
+//Gate Servo 1
 #define GATE_SERVO 4
 Servo gateServo;
+
+//Gate Servo 0
+#define GATE_SERVO_0 13
+Servo gateServo_0;
 
 //Ramp Servo
 #define RAMP_SERVO 5
@@ -99,8 +103,12 @@ bool deployed = false;
 unsigned char TestForKey(void);
 void RespToKey(void);
 void spinRobot(bool direction, double speed);
-void driveGateServo(Servo gateServo);
+void driveGateServo();
+void driveGate0Servo();
 void deployRampServo(Servo rampServo, bool* deployed);
+void startDumping();
+void startDumping0();
+void deployChips();
 
 // FSM STATE DEFINITIONS
 typedef enum{
@@ -116,6 +124,9 @@ typedef enum{
 /*----------------Global variables------------*/
 states current_state;
 states next_state;
+
+//number of chips deployed so far
+int n_chips_deployed = 0;
 
 // current coordinates, defined relative to middle back side of bot. x=0 is middle of arena, y=0 is back
 int x; // cm
@@ -175,11 +186,9 @@ void setup() {
   
 //  Set up the servos
   gateServo.attach(GATE_SERVO);
-  gateServo.write(165);
-  rampServo.attach(RAMP_SERVO);
-  
-  deployRampServo(rampServo, &deployed);
-  rampServo.detach();
+  gateServo.write(160);
+  gateServo_0.attach(GATE_SERVO_0);
+  gateServo_0.write(0);
 //  driveGateServo(gateServo);
 //  gateServo.detach();
   
@@ -247,7 +256,7 @@ void loop()
     case DRIVING: {
       if (checkTape()) {
         stopDriving();
-        startDumping();
+        deployChips();
         next_state = DUMPING;
       }
       break;
@@ -302,8 +311,15 @@ void stopDriving() {
 
 void startDumping() {
   // Need to call mini servo code
-  driveGateServo(gateServo);
+  driveGateServo();
   gateServo.detach();
+  delay(1500);
+}
+
+void startDumping0() {
+  // Need to call mini servo code
+  driveGate0Servo();
+  gateServo_0.detach();
   delay(1500);
 }
 
@@ -631,11 +647,11 @@ void parseString(char* result) {
   usonicValues[5] = atan((usonicValues[1] - usonicValues[0]) / SENSOR_SEPARATION) * 180 / M_PI;
   usonicValues[6] = atan((usonicValues[3] - usonicValues[2]) / SENSOR_SEPARATION) * 180 / M_PI;
 
-//  for (int i=0; i<7; i++) {
-//    Serial.print(usonicValues[i]);
-//    Serial.print(" ");
-//  }
-//  Serial.println();
+  for (int i=0; i<7; i++) {
+    Serial.print(usonicValues[i]);
+    Serial.print(" ");
+  }
+  Serial.println();
 }
 
 char* processIncomingByte (const byte inByte) {
@@ -673,24 +689,48 @@ void receiveEvent(int howMany) {
   
 }
 
-void driveGateServo(Servo gateServo){
+void driveGateServo(){
   int pos;
 
-  for(pos = 165; pos>=35; pos-=5)     // goes from 180 degrees to 0 degrees 
+  for(pos = 160; pos>=35; pos-=5)     // goes from 180 degrees to 0 degrees 
   {                                
     gateServo.write(pos);              // tell servo to go to position in variable 'pos' 
     delay(15);                       // waits 15ms for the servo to reach the position 
   }
 
   gateServo.detach();
+  /*
   delay(1000);
-  gateServo.attach(GATE_SERVO); 
+  CurrentgateServo.attach(GATE_SERVO); 
   
   for(pos = 35; pos <= 165; pos += 5) // goes from 0 degrees to 180 degrees 
   {                                  // in steps of 1 degree 
-    gateServo.write(pos);              // tell servo to go to position in variable 'pos' 
+    CurrentgateServo.write(pos);              // tell servo to go to position in variable 'pos' 
     delay(15);                       // waits 15ms for the servo to reach the position 
   }
+  */
+}
+
+void driveGate0Servo(){
+  int pos;
+
+  for(pos = 10; pos <= 100; pos += 5) // goes from 0 degrees to 180 degrees 
+  {                                  // in steps of 1 degree 
+    gateServo_0.write(pos);              // tell servo to go to position in variable 'pos' 
+    delay(15);                       // waits 15ms for the servo to reach the position 
+  }
+  gateServo_0.detach();
+  
+  /*
+  delay(1000);
+  CurrentgateServo.attach(GATE_SERVO); 
+  
+  for(pos = 35; pos <= 165; pos += 5) // goes from 0 degrees to 180 degrees 
+  {                                  // in steps of 1 degree 
+    CurrentgateServo.write(pos);              // tell servo to go to position in variable 'pos' 
+    delay(15);                       // waits 15ms for the servo to reach the position 
+  }
+  */
 }
 
 void deployRampServo(Servo rampServo, bool* deployed){
@@ -703,3 +743,22 @@ void deployRampServo(Servo rampServo, bool* deployed){
     *deployed = true; 
 }
 
+void deployChips(){
+  if (n_chips_deployed == 0){
+    rampServo.attach(RAMP_SERVO);
+    deployRampServo(rampServo, &deployed);
+    rampServo.detach();
+    n_chips_deployed += 1;
+    return;
+  }
+  if (n_chips_deployed == 1){
+    startDumping0();
+    n_chips_deployed += 1;
+    return;
+  }
+  if (n_chips_deployed == 2){
+    startDumping();
+    n_chips_deployed += 1;
+    return;
+  }
+}
