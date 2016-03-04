@@ -73,6 +73,7 @@ Servo rampServo;
 #define START_BACKDISTANCE_MAX 55 // cm
 
 #define ARENA_HALFWIDTH 122 // cm
+#define ARENA_WIDTH 244
 #define ROBOT_LENGTH 28 // cm
 
 // half width of the back IR block
@@ -85,11 +86,11 @@ Servo rampServo;
 #define MAX_Y 68 // cm
 
 // coordinates of the centers of the buckets, from left to right
-#define BUCKET1_X -81 // cm (-32in)
+#define BUCKET1_X -76 // cm (-32in)
 #define BUCKET2_X -41 // cm (-16in)
 #define BUCKET3_X  -0 // cm (0in)
 #define BUCKET4_X  41 // cm (16in)
-#define BUCKET5_X  81 // cm (32in)
+#define BUCKET5_X  76  // cm (32in)
 
 //keep track of ramp deployment
 bool deployed = false;
@@ -104,7 +105,8 @@ void deployRampServo(Servo rampServo, bool* deployed);
 // FSM STATE DEFINITIONS
 typedef enum{
   HALT, //stops the robot
-  ORIENTING, //spin and orient the robot and determine the initial x,y coordinates
+  INITIAL_ORIENTING, //spin and orient the robot and determine the initial x,y coordinates
+  ORIENTING,
   DRIVING, //drives the robot 
   RETURNING, //return the robot to the base
   DUMPING, //dump chips
@@ -156,11 +158,10 @@ void setup() {
   //digitalWrite(PWM_PIN_D,LOW);
   
   //Begin from the clockwise spinning state
-  //current_state = ORIENTING;
-  //next_state = ORIENTING;
+  //current_state = INITIAL_ORIENTING;
+  //next_state = INITIAL_ORIENTING;
   stopDriving();
-  current_state = ORIENTING;
-  next_state = ORIENTING; 
+  
   delay(300);
 
   x = 90; // initial guess
@@ -174,17 +175,21 @@ void setup() {
   
 //  Set up the servos
   gateServo.attach(GATE_SERVO);
+  gateServo.write(165);
   rampServo.attach(RAMP_SERVO);
   
   deployRampServo(rampServo, &deployed);
-  delay(500);
-  driveGateServo(gateServo);
+  rampServo.detach();
+//  driveGateServo(gateServo);
+//  gateServo.detach();
   
-  //  spinRobot(true,0.15);
-//  driveAngle(90,0.5);
-//  delay(10000);
+  spinRobot(true,0.15);
+  current_state = INITIAL_ORIENTING;
+  next_state = INITIAL_ORIENTING; 
 
-
+//  driveAngle(0,0.5);
+//  current_state = DRIVING;
+//  next_state = DRIVING;
 }
 
 void loop() 
@@ -198,9 +203,9 @@ void loop()
     next_state = HALT;
   }
   
-  if (current_state != ORIENTING) {
+  if (current_state != INITIAL_ORIENTING && current_state != ORIENTING) {
 //    setBiases();
-//    setXY();
+    setXY();
   }
   
   switch(current_state) {
@@ -213,15 +218,32 @@ void loop()
       next_state = HALT;
       break;
     }
-    case ORIENTING: {
-      Serial.println("loop");
+    case INITIAL_ORIENTING: {
+//      Serial.println("loop");
       if (checkOriented()) {
+        
+        Serial.print(x);
+        Serial.print(" ");
+        Serial.println(y);
         stopDriving();
-//        driveToFirstBucket();
-//        next_state = DRIVING;
+        driveToFirstBucket();
+        next_state = DRIVING;
       }
       break;
     }
+    case ORIENTING: { 
+      // resetBiases before this state
+      if (checkOriented2()) {
+        if (y > ARENA_WIDTH/4) {
+          startReturning();
+          next_state = RETURNING;
+        } else {
+          driveToBucket();
+          next_state = DRIVING;
+        }
+      }
+    }
+    break;
     case DRIVING: {
       if (checkTape()) {
         stopDriving();
@@ -242,6 +264,9 @@ void loop()
       if (checkDoneReturning()) {
         stopDriving();
         next_state = LOADING;
+      } else if (abs(x) < 5) {
+        driveAngle(180,0.5);
+        
       }
       break;
     } case LOADING: {
@@ -277,12 +302,13 @@ void stopDriving() {
 
 void startDumping() {
   // Need to call mini servo code
-  miniServoUp(); // Don't have Servo code, but they should be called here
-  // SET a timer...  checkDoneDumping checks for expired. How do we have timers called / configured?
+  driveGateServo(gateServo);
+  gateServo.detach();
+  delay(1500);
 }
 
 void stopDumping() {
-  miniServoDown();
+//  miniServoDown();
 }
 
 void miniServoUp() {
@@ -333,29 +359,33 @@ void driveToBucket() {
 void driveToFirstBucket() {
   stopDriving();
   
-  driveAngle(-90, 1);
-//  driveAngle(getDestAngle(BUCKET5_X, MAX_Y),1);
+//  driveAngle(-90, 1);
+  driveAngle(getDestAngle(BUCKET5_X, MAX_Y-5),0.5);
 }
 
 void startReturning() {
-  driveAngle(getDestAngle(0,MIN_Y),1); 
+  driveAngle(getDestAngle(0,MIN_Y),0.5); 
 }
 
 bool checkTape() {
-  return !digitalRead(TAPE_PIN);
+  return !digitalRead(TAPE_PIN) || y > MAX_Y - 6;
+  
+//  return false;
 }
 
 bool checkLoaded() {
-  return false;
+  delay(3000);
+  return true;
 }
 
 bool checkDoneReturning() {
-  if (abs(x) < 3 && abs(y-MIN_Y) < 3) return true;
+  if (abs(y-MIN_Y) < 3) return true;
   else return false;
 }
 
 bool checkDoneDumping() {
-  return false;
+  return true;
+//  return false;
 }
 
 bool checkTimeup() {
@@ -366,15 +396,15 @@ bool checkTimeup() {
 // calculates angle we need to drive at to get to a destination
 int getDestAngle(int dest_x, int dest_y) {
   if (dest_y > y) {
-    return 180*atan((dest_x-x)/(dest_y-y))/PI;
+    return 180*atan((float)(dest_x-x)/(dest_y-y))/M_PI;
   } else {
-    return 180+180*atan((dest_x-x)/(dest_y-y))/PI;
+    return 180+180*atan((float)(dest_x-x)/(dest_y-y))/M_PI;
   }
 }
 
 // returns array of booleans for each of the 5 front IR sensors, from left to right
 bool* readFrontIR() {
-  bool vals[5] = {false, false, false, false, false};
+  bool vals[5] = {true, true, false, true, false};
   if (digitalRead(IR_PIN0) == HIGH) vals[0] = true;
   if (digitalRead(IR_PIN1) == HIGH) vals[1] = true;
   if (digitalRead(IR_PIN2) == HIGH) vals[2] = true;
@@ -403,47 +433,67 @@ bool checkOriented() {
   return false;
 }
 
+bool checkOriented2() {
+  if (abs(usonicValues[USONIC_RIGHTANGLE_IDX]+12) < 5
+      && abs(usonicValues[USONIC_LEFT_IDX] + ROBOT_LENGTH + usonicValues[USONIC_RIGHT1_IDX] - ARENA_WIDTH) < 5) {
+        setXY();
+    return true;
+  } 
+  return false;
+}
+
+void resetBiases() {
+  motorABias = 1;
+  motorBBias = 1;
+  motorCBias = 1;
+  motorDBias = 1;
+}
+
 void setBiases() {
   int angle = 0;
-  if (abs(x) > ROBOT_LENGTH+IR_BLOCK_MARGIN) {
-    angle = usonicValues[USONIC_BACKANGLE_IDX];
-  } else {
-    angle = usonicValues[USONIC_RIGHTANGLE_IDX];
-  }
+//  if (abs(x) > ROBOT_LENGTH+IR_BLOCK_MARGIN) {
+//    angle = usonicValues[USONIC_BACKANGLE_IDX];
+//  } else {
+//    angle = usonicValues[USONIC_RIGHTANGLE_IDX];
+//  }
+  angle = usonicValues[USONIC_RIGHTANGLE_IDX];
 
   // NEEDS CALIBRATION
-  motorABias = 1+angle/45.0;
-  motorBBias = 1-angle/45.0;
-  motorCBias = 1-angle/45.0;
-  motorDBias = 1+angle/45.0;
+  motorABias = 1+angle/5.0;
+  motorBBias = 1-angle/5.0;
+  motorCBias = 1-angle/5.0;
+  motorDBias = 1+angle/5.0;
 }
 
 void setXY() {
   int rightdistance = usonicValues[USONIC_RIGHT1_IDX];
-  if (usonicValues[USONIC_RIGHT1_IDX] != -1) {
-    if (usonicValues[USONIC_RIGHT2_IDX] != -1) {
-      rightdistance = (usonicValues[USONIC_RIGHT1_IDX] + usonicValues[USONIC_RIGHT2_IDX])/2.0;
-    } else {
-      rightdistance = usonicValues[USONIC_RIGHT1_IDX];
-    }
-  } else {
-    if (usonicValues[USONIC_RIGHT2_IDX] != -1) {
-      rightdistance = usonicValues[USONIC_RIGHT2_IDX];
-    } else {
-      rightdistance = -1;
-    }
-  }
+  rightdistance = (usonicValues[USONIC_RIGHT1_IDX] + usonicValues[USONIC_RIGHT2_IDX])/2.0;
+//  if (usonicValues[USONIC_RIGHT1_IDX] != -1) {
+//    if (usonicValues[USONIC_RIGHT2_IDX] != -1) {
+//      
+//    } else {
+//      rightdistance = usonicValues[USONIC_RIGHT1_IDX];
+//    }
+//  } else {
+//    if (usonicValues[USONIC_RIGHT2_IDX] != -1) {
+//      rightdistance = usonicValues[USONIC_RIGHT2_IDX];
+//    } else {
+//      rightdistance = -1;
+//    }
+//  }
   int leftdistance = usonicValues[USONIC_LEFT_IDX];
   
-  if (rightdistance != -1) {
-    if (leftdistance != -1) {
-      x = (leftdistance-rightdistance)/2.0;
-    } else {
-      x = ARENA_HALFWIDTH-rightdistance-ROBOT_LENGTH/2;
-    }
-  } else if (leftdistance != -1) {
-      x = leftdistance-ARENA_HALFWIDTH+ROBOT_LENGTH/2;
-  }
+//  if (rightdistance != -1) {
+//    if (leftdistance != -1) {
+//      x = (leftdistance-rightdistance)/2.0;
+//    } else {
+//      x = ARENA_HALFWIDTH-rightdistance-ROBOT_LENGTH/2;
+//    }
+//  } else if (leftdistance != -1) {
+//      x = leftdistance-ARENA_HALFWIDTH+ROBOT_LENGTH/2;
+//  }
+  x = ARENA_HALFWIDTH-rightdistance-ROBOT_LENGTH/2;
+  
   
   if (usonicValues[USONIC_BACK1_IDX] > usonicValues[USONIC_BACK2_IDX] && usonicValues[USONIC_BACK1_IDX] != -1) {
     y = usonicValues[USONIC_BACK1_IDX];
@@ -625,29 +675,29 @@ void receiveEvent(int howMany) {
 
 void driveGateServo(Servo gateServo){
   int pos;
-  for(pos = 35; pos <= 165; pos += 10) // goes from 0 degrees to 180 degrees 
-  {                                  // in steps of 1 degree 
-    gateServo.write(pos);              // tell servo to go to position in variable 'pos' 
-    delay(15);                       // waits 15ms for the servo to reach the position 
-  }
-  gateServo.detach();
-  delay(1000);
-  gateServo.attach(GATE_SERVO); 
-  for(pos = 165; pos>=35; pos-=10)     // goes from 180 degrees to 0 degrees 
+
+  for(pos = 165; pos>=35; pos-=5)     // goes from 180 degrees to 0 degrees 
   {                                
     gateServo.write(pos);              // tell servo to go to position in variable 'pos' 
     delay(15);                       // waits 15ms for the servo to reach the position 
   }
+
   gateServo.detach();
   delay(1000);
   gateServo.attach(GATE_SERVO); 
+  
+  for(pos = 35; pos <= 165; pos += 5) // goes from 0 degrees to 180 degrees 
+  {                                  // in steps of 1 degree 
+    gateServo.write(pos);              // tell servo to go to position in variable 'pos' 
+    delay(15);                       // waits 15ms for the servo to reach the position 
+  }
 }
 
 void deployRampServo(Servo rampServo, bool* deployed){
     if (!(*deployed)){
       rampServo.write(1200);    // Rotate servo to center
-      delay(690);
-      rampServo.write(1450);     // Rotate servo clockwise
+      delay(800);
+      rampServo.write(1500);     // Rotate servo clockwise
       delay(1000);
     }
     *deployed = true; 
