@@ -1,6 +1,6 @@
 #include <Arduino.h>
 #include <Wire.h>
-//#include <Servo.h>
+#include <Servo.h>
 
 /*************************************************************
   File:      ME210_Project_MainCode.ino
@@ -25,19 +25,22 @@
 
 //Gate Servo
 #define GATE_SERVO 4
-//Servo gateServo;
+Servo gateServo;
 
 //Ramp Servo
 #define RAMP_SERVO 5
-//Servo rampServo;
+Servo rampServo;
 
 //motor A
 #define PWM_PIN_A 9  // pwm pin for the motor
-#define DIR_PIN_A 8 //direction input to the H bridge
+#define DIR_PIN_A1 51 //direction input to the H bridge
+#define DIR_PIN_A2 53 //direction input to the H bridge
+
 
 //motor B
 #define PWM_PIN_B 11  // pwm pin for the motor
-#define DIR_PIN_B 10 //direction input to the H bridge
+#define DIR_PIN_B1 47 //direction input to the H bridge
+#define DIR_PIN_B2 49 //direction input to the H bridge
 
 //motor C
 #define PWM_PIN_C 6  // pwm pin for the motor
@@ -48,8 +51,8 @@
 #define DIR_PIN_D 2 //direction input to the H bridge
 
 #define MIN_SPEED_A 70.0
-#define MIN_SPEED_B 70.0
-#define MIN_SPEED_C 70.0
+#define MIN_SPEED_B 75.0
+#define MIN_SPEED_C 75.0
 #define MIN_SPEED_D 70.0
 #define MAX_SPEED 255
 
@@ -64,8 +67,10 @@
 #define USONIC_RIGHTANGLE_IDX 5
 #define USONIC_BACKANGLE_IDX 6
 
-#define START_RIGHTDISTANCE_MAX 61 // cm
-#define START_BACKDISTANCE_MAX 61 // cm
+#define SENSOR_SEPARATION 20.0 //cm
+
+#define START_RIGHTDISTANCE_MAX 55 // cm
+#define START_BACKDISTANCE_MAX 55 // cm
 
 #define ARENA_HALFWIDTH 122 // cm
 #define ROBOT_LENGTH 28 // cm
@@ -93,8 +98,8 @@ bool deployed = false;
 unsigned char TestForKey(void);
 void RespToKey(void);
 void spinRobot(bool direction, double speed);
-//void driveGateServo(Servo gateServo);
-//void deployRampServo(Servo rampServo, bool* deployed);
+void driveGateServo(Servo gateServo);
+void deployRampServo(Servo rampServo, bool* deployed);
 
 // FSM STATE DEFINITIONS
 typedef enum{
@@ -134,9 +139,11 @@ void setup() {
   
   //Initialize the motor pins 
   pinMode(PWM_PIN_A, OUTPUT);
-  pinMode(DIR_PIN_A, OUTPUT); 
+  pinMode(DIR_PIN_A1, OUTPUT); 
+  pinMode(DIR_PIN_A2, OUTPUT); 
   pinMode(PWM_PIN_B, OUTPUT);
-  pinMode(DIR_PIN_B, OUTPUT); 
+  pinMode(DIR_PIN_B1, OUTPUT);
+  pinMode(DIR_PIN_B2, OUTPUT); 
   pinMode(PWM_PIN_C, OUTPUT);
   pinMode(DIR_PIN_C, OUTPUT); 
   pinMode(PWM_PIN_D, OUTPUT);
@@ -152,8 +159,8 @@ void setup() {
   //current_state = ORIENTING;
   //next_state = ORIENTING;
   stopDriving();
-  current_state = HALT;
-  next_state = HALT; 
+  current_state = ORIENTING;
+  next_state = ORIENTING; 
   delay(300);
 
   x = 90; // initial guess
@@ -163,13 +170,21 @@ void setup() {
   motorBBias = 1.0;
   motorCBias = 1.0;
   motorDBias = 1.0;
-//  spinRobot(true,0.15);
+
   
-  //Set up the servos
-  //gateServo.attach(GATE_SERVO);
-  //rampServo.attach(RAMP_SERVO);
-  //driveGateServo(gateServo);
-  //deployRampServo(rampServo);
+//  Set up the servos
+  gateServo.attach(GATE_SERVO);
+  rampServo.attach(RAMP_SERVO);
+  
+  deployRampServo(rampServo, &deployed);
+  delay(500);
+  driveGateServo(gateServo);
+  
+  //  spinRobot(true,0.15);
+//  driveAngle(90,0.5);
+//  delay(10000);
+
+
 }
 
 void loop() 
@@ -184,8 +199,8 @@ void loop()
   }
   
   if (current_state != ORIENTING) {
-    setBiases();
-    setXY();
+//    setBiases();
+//    setXY();
   }
   
   switch(current_state) {
@@ -194,21 +209,20 @@ void loop()
       //Serial.print(checkTape());
       //deployRampServo(rampServo, &deployed);
       //driveGateServo(gateServo);
-      Serial.println("HALT");
+//      Serial.println("HALT");
       next_state = HALT;
       break;
     }
     case ORIENTING: {
+      Serial.println("loop");
       if (checkOriented()) {
+        stopDriving();
 //        driveToFirstBucket();
 //        next_state = DRIVING;
-        startReturning();
-        next_state = RETURNING;
       }
       break;
     }
     case DRIVING: {
-      driveAngle(0,0.5);
       if (checkTape()) {
         stopDriving();
         startDumping();
@@ -251,10 +265,14 @@ void halt() {
 }
 
 void stopDriving() {
-  analogWrite(PWM_PIN_A, MIN_SPEED_A);
-  analogWrite(PWM_PIN_B, MIN_SPEED_B);
-  analogWrite(PWM_PIN_C, MIN_SPEED_C);
-  analogWrite(PWM_PIN_D, MIN_SPEED_D);
+//  analogWrite(PWM_PIN_A, MIN_SPEED_A);
+//  analogWrite(PWM_PIN_B, MIN_SPEED_B);
+//  analogWrite(PWM_PIN_C, MIN_SPEED_C);
+//  analogWrite(PWM_PIN_D, MIN_SPEED_D);
+  digitalWrite(PWM_PIN_A, 0);
+  digitalWrite(PWM_PIN_B, 0);
+  digitalWrite(PWM_PIN_C, 0);
+  digitalWrite(PWM_PIN_D, 0);
 }
 
 void startDumping() {
@@ -315,7 +333,7 @@ void driveToBucket() {
 void driveToFirstBucket() {
   stopDriving();
   
-//  driveAngle(-90, 1);
+  driveAngle(-90, 1);
 //  driveAngle(getDestAngle(BUCKET5_X, MAX_Y),1);
 }
 
@@ -372,8 +390,8 @@ bool readBackIR() {
 
 bool checkOriented() {  
   
-  if (usonicValues[USONIC_RIGHTANGLE_IDX] > 0 && usonicValues[USONIC_RIGHTANGLE_IDX] > -3
-      && usonicValues[USONIC_BACKANGLE_IDX] > 0 && usonicValues[USONIC_BACKANGLE_IDX] > -3
+  if (abs(usonicValues[USONIC_RIGHTANGLE_IDX]+12) < 5
+      && abs(usonicValues[USONIC_BACKANGLE_IDX]+12) < 5
       && usonicValues[USONIC_RIGHT1_IDX] < START_RIGHTDISTANCE_MAX
       && usonicValues[USONIC_RIGHT2_IDX] < START_RIGHTDISTANCE_MAX
       && usonicValues[USONIC_BACK1_IDX] < START_BACKDISTANCE_MAX
@@ -394,10 +412,10 @@ void setBiases() {
   }
 
   // NEEDS CALIBRATION
-  motorABias = 1+angle/20.0;
-  motorBBias = 1+angle/20.0;
-  motorCBias = 1+angle/20.0;
-  motorDBias = 1+angle/20.0;
+  motorABias = 1+angle/45.0;
+  motorBBias = 1-angle/45.0;
+  motorCBias = 1-angle/45.0;
+  motorDBias = 1+angle/45.0;
 }
 
 void setXY() {
@@ -447,6 +465,9 @@ void driveAngle(int angleDeg, double v) {
 // motor is the motor number (A=1, B=2, C=3, D=4)
 // val is between -1 (full CCW) and 1 (full CW)
 void driveMotor(int motor, double val) {
+  Serial.print(motor);
+  Serial.print(" ");
+  Serial.println(val);
   switch (motor) {
     case 1: {
       // if below certain threshold, we just set the motor's enable pin to LOW
@@ -459,8 +480,14 @@ void driveMotor(int motor, double val) {
       // threshold to drive this particular motor.
       int speedMapping = MIN_SPEED_A + motorABias*abs(val)*(MAX_SPEED-MIN_SPEED_A);
       analogWrite(PWM_PIN_A, speedMapping);
-      if (val < 0) digitalWrite(DIR_PIN_A, LOW);
-      else digitalWrite(DIR_PIN_A, HIGH);
+      if (val < 0) {
+        digitalWrite(DIR_PIN_A1, LOW);
+        digitalWrite(DIR_PIN_A2, HIGH);
+      }
+      else {
+        digitalWrite(DIR_PIN_A1, HIGH);
+        digitalWrite(DIR_PIN_A2, LOW);
+      }
       break;
     };
     case 2: {
@@ -470,8 +497,14 @@ void driveMotor(int motor, double val) {
       }
       int speedMapping = MIN_SPEED_B + motorBBias*abs(val)*(MAX_SPEED-MIN_SPEED_B);
       analogWrite(PWM_PIN_B, speedMapping);
-      if (val < 0) digitalWrite(DIR_PIN_B, HIGH);
-      else digitalWrite(DIR_PIN_B, LOW);
+      if (val < 0) {
+        digitalWrite(DIR_PIN_B1, HIGH);
+        digitalWrite(DIR_PIN_B2, LOW);
+      }
+      else {
+        digitalWrite(DIR_PIN_B1, LOW);
+        digitalWrite(DIR_PIN_B2, HIGH);
+      }
       break;
     };
     case 3: {
@@ -544,7 +577,15 @@ void parseString(char* result) {
     usonicValues[count] = atoi(token);
     token = strtok(NULL, " ");
     count++;
-  }  
+  }
+  usonicValues[5] = atan((usonicValues[1] - usonicValues[0]) / SENSOR_SEPARATION) * 180 / M_PI;
+  usonicValues[6] = atan((usonicValues[3] - usonicValues[2]) / SENSOR_SEPARATION) * 180 / M_PI;
+
+//  for (int i=0; i<7; i++) {
+//    Serial.print(usonicValues[i]);
+//    Serial.print(" ");
+//  }
+//  Serial.println();
 }
 
 char* processIncomingByte (const byte inByte) {
@@ -577,11 +618,11 @@ void receiveEvent(int howMany) {
   while (0 < Wire.available()) { // loop through all but the last
     result = processIncomingByte((char)Wire.read()); // receive byte as a character
   }
-  //Serial.println(result);
+//  Serial.println(result);
   parseString(result);
   
 }
-/*
+
 void driveGateServo(Servo gateServo){
   int pos;
   for(pos = 35; pos <= 165; pos += 10) // goes from 0 degrees to 180 degrees 
@@ -606,9 +647,9 @@ void deployRampServo(Servo rampServo, bool* deployed){
     if (!(*deployed)){
       rampServo.write(1200);    // Rotate servo to center
       delay(690);
-      rampServo.write(1500);     // Rotate servo clockwise
+      rampServo.write(1450);     // Rotate servo clockwise
       delay(1000);
     }
     *deployed = true; 
 }
-*/
+
